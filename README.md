@@ -13,6 +13,8 @@ Includes both a full information script and a lightweight version.
 
 ## Usage
 
+Download all 3 files and place them inside a folder and run your desired version.
+
 Clone the repository:
 
 ```bash
