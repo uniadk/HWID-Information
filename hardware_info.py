@@ -3,29 +3,46 @@ from __future__ import annotations
 import hashlib
 import platform
 import sys
-import uuid
-import winreg
 from typing import Any
 
-from hw_common import pause, print_kv, section, wmi_query
-
-
-def format_mac_from_node() -> str:
-    node = uuid.getnode()
-    return ":".join(f"{(node >> shift) & 0xFF:02X}" for shift in range(40, -1, -8))
+from hw_common import format_mac_from_node, pause, print_kv, section, wmi_query
 
 
 def get_registry_machine_guid() -> str:
     try:
-        key = winreg.OpenKey(
+        import winreg
+    except ImportError:
+        return "<unavailable: winreg is only supported on Windows>"
+    try:
+        with winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE,
             r"SOFTWARE\Microsoft\Cryptography",
-        )
-        value, _ = winreg.QueryValueEx(key, "MachineGuid")
-        winreg.CloseKey(key)
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "MachineGuid")
         return str(value)
     except OSError as exc:
         return f"<unavailable: {exc}>"
+
+
+def _usable_id(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text or text.startswith("<"):
+        return ""
+    return text
+
+
+def format_adapter_ram(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return "?"
+    try:
+        ram = int(text)
+    except ValueError:
+        return text
+    if ram < 0:
+        # AdapterRAM is a uint32; values above 2 GiB may arrive as signed ints.
+        ram += 1 << 32
+    return f"{ram / (1024 ** 3):.2f} GB"
 
 
 def get_volume_serial(drive: str = "C:") -> str:
@@ -160,12 +177,7 @@ def show_hardware(hw: dict[str, Any]) -> None:
 
     section("GRAPHICS")
     for i, gpu in enumerate(hw["gpus"], 1):
-        ram = gpu.get("AdapterRAM", "")
-        try:
-            ram_gb = int(ram) / (1024 ** 3)
-            ram_text = f"{ram_gb:.2f} GB"
-        except (ValueError, TypeError):
-            ram_text = ram or "?"
+        ram_text = format_adapter_ram(gpu.get("AdapterRAM", ""))
         print_kv(f"GPU {i}", f"{gpu.get('Name', '?')} | Driver {gpu.get('DriverVersion', '?')} | VRAM {ram_text}")
 
     section("NETWORK")
@@ -229,15 +241,21 @@ def show_hwids(hw: dict[str, Any]) -> None:
     print_kv("SHA-256", hwid4, indent=4)
     print()
 
-    mac_clean = mac.replace(":", "").upper()
-    vol_clean = str(volume_serial).strip().upper()
-    hwid5_raw = f"{mac_clean}-{vol_clean}"
-    hwid5 = hash_id(mac_clean, vol_clean)
+    mac_clean = _usable_id(mac).replace(":", "").upper()
+    vol_clean = _usable_id(volume_serial).upper()
+    if mac_clean and vol_clean:
+        hwid5_raw = f"{mac_clean}-{vol_clean}"
+        hwid5 = hash_id(mac_clean, vol_clean)
+        hwid5_md5 = hash_id(mac_clean, vol_clean, algo="md5")
+    else:
+        hwid5_raw = f"{mac_clean or '<unknown>'}-{vol_clean or '<unknown>'}"
+        hwid5 = "<unavailable>"
+        hwid5_md5 = "<unavailable>"
     print("  [5] MAC address + C: volume serial (composite hash)")
     print_kv("Source", "uuid.getnode() MAC + Win32_LogicalDisk.VolumeSerialNumber", indent=4)
     print_kv("Combined", hwid5_raw, indent=4)
     print_kv("SHA-256", hwid5, indent=4)
-    print_kv("MD5 (legacy apps)", hash_id(mac_clean, vol_clean, algo="md5"), indent=4)
+    print_kv("MD5 (legacy apps)", hwid5_md5, indent=4)
 
 
 def main() -> None:

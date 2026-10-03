@@ -1,14 +1,8 @@
 from __future__ import annotations
 
 import sys
-import uuid
 
-from hw_common import decode_wmi_bytes, pause, print_kv, section, wmi_query
-
-
-def format_mac_from_node() -> str:
-    node = uuid.getnode()
-    return ":".join(f"{(node >> shift) & 0xFF:02X}" for shift in range(40, -1, -8))
+from hw_common import decode_wmi_bytes, format_mac_from_node, pause, print_kv, section, wmi_query
 
 
 def show_cpu() -> None:
@@ -35,7 +29,7 @@ def show_gpu() -> None:
         print_kv("Name", gpu.get("Name"))
         print_kv("PNP Device ID", gpu.get("PNPDeviceID"))
         print_kv("Device ID", gpu.get("DeviceID"))
-        print_kv("Vendor ID", gpu.get("AdapterCompatibility"))
+        print_kv("Manufacturer", gpu.get("AdapterCompatibility"))
 
 
 def show_ram() -> None:
